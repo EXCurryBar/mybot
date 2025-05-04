@@ -3,3 +3,4 @@ secret.json
 .venv
 __pycache__/
 fail.json
+config.json
