@@ -7,6 +7,7 @@ import requests
 import re
 import json
 from mongo_history import MongoHistoryManager
+from ollama import Client 
 
 
 MODEL = json.loads(open("config.json", "r").read())["model"]
@@ -15,9 +16,7 @@ secret = json.loads(open("secret.json", "r").read())
 
 class IntelligentChatAssistant:
     def __init__(self, search_depth=5):
-        self.client = OpenAI(
-            api_key=json.loads(open("secret.json", "r").read())["openai"]
-        )
+        self.client = Client(host="https://llm.alan-lin.com")
         self.prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", PROMPT),
@@ -25,9 +24,7 @@ class IntelligentChatAssistant:
                 ("user", "{input}"),
             ]
         )
-        self.llm = ChatOpenAI(
-            model=MODEL, api_key=json.loads(open("secret.json", "r").read())["openai"]
-        )
+    
         self.search_depth = search_depth
         self.search_cache = {}
         self.history_manager = MongoHistoryManager()
@@ -90,43 +87,35 @@ class IntelligentChatAssistant:
         
         # 圖
         if image_data:
-            # o4-mini多模態推理
-            messages = [{"role": "system", "content": PROMPT}]
-            messages += history_messages
-            messages.append({
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "請分析或評價這張圖片中的東西或文字，無法辨識時請也請一定要回點文字"},
+            response = self.client.chat(
+                model='llava',
+                messages=[
+                    {"role": "system", "content": PROMPT},
+                    *history_messages,
                     {
-                        "type": "image_url",
-                        "image_url": {  # 改為對象格式
-                            "url": f"data:image/jpeg;base64,{image_data}",
-                            "detail": "high"  # 可選參數，控制圖片解析度
-                        }
+                        "role": "user", 
+                        "content": "請分析或評價這張圖片中的東西或文字，無法辨識時請也請一定要回點文字",
+                        "images": [image_data]  # 直接傳入 base64 字串
                     }
                 ]
-            })
-            response = self.client.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                max_completion_tokens=1000
-            ).choices[0].message.content
-            # 儲存圖片分析對話
+            )
+            # 儲存回應
+            final_response = response.message.content
             chat_history.add_user_message("[圖片]")
-            chat_history.add_ai_message(response)
-            return response
+            chat_history.add_ai_message(final_response)
+            return final_response
 
         
         
         # 文字訊息
-        initial_response = self.client.responses.create(
-            model=MODEL,
-            input=[
+        initial_response = self.client.chat(
+            model=MODEL,  # 需改為本地模型名稱如 'llama3.2'
+            messages=[
                 {"role": "system", "content": PROMPT},
                 *history_messages,
                 {"role": "user", "content": user_input},
-            ],
-        ).output_text
+            ]
+        ).message.content
 
         # 判斷是否需要網路搜尋
         fail_message = json.loads(open("fail.json", "r").read())
@@ -137,16 +126,13 @@ class IntelligentChatAssistant:
             search_result = self._web_search(search_query)
 
             if search_result:
-                final_response = self.client.responses.create(
+                final_response = self.client.chat(
                     model=MODEL,
-                    input=[
+                    messages=[
                         {"role": "system", "content": "請整合以下資訊回答問題"},
-                        {
-                            "role": "user",
-                            "content": f"問題：{user_input}\n補充資料：{search_result}",
-                        },
-                    ],
-                ).output_text
+                        {"role": "user", "content": f"問題：{user_input}\n補充資料：{search_result}"}
+                    ]
+                ).message.content
             else:
                 final_response = "無法取得相關網路資訊，請嘗試其他問題"
         else:
