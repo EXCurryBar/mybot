@@ -96,7 +96,10 @@ class IntelligentChatAssistant:
             messages.append({
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "請分析或評價這張圖片中的東西或文字，無法辨識時請也請一定要回點文字"},
+                    {"type": "text", "text": """你必須遵守以下規則：
+                                            1. 無論影像內容是否可辨識，必須提供至少50字回應
+                                            2. 若無法辨識主要物件，需描述色彩、構圖等基本特徵
+                                            3. 完全無法分析時，建議使用者調整拍攝角度或提供文字說明"""},
                     {
                         "type": "image_url",
                         "image_url": {  # 改為對象格式

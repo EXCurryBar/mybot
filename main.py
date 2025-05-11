@@ -1,4 +1,5 @@
 import json
+import logging
 from flask import Flask, request, abort
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -12,6 +13,21 @@ from linebot.v3.messaging import (
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, ImageMessageContent
 from gai import IntelligentChatAssistant
 from image_processor import ImageProcessor
+from datetime import datetime
+
+log_filename = datetime.now().strftime("%Y%m%d_%H%M%S") + ".log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler(
+            # "./log/" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".log", "w", "utf-8"
+            "./log/{}".format(log_filename), "w", "utf-8"
+        )
+    ],
+)
 
 app = Flask(__name__)
 config = json.loads(open("config.json", "r").read())
