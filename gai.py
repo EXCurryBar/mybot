@@ -96,7 +96,7 @@ class IntelligentChatAssistant:
             messages.append({
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "請分析或評價這張圖片中的東西或文字"},
+                    {"type": "text", "text": "請分析或評價這張圖片中的東西或文字，無法辨識時請也請一定要回點文字"},
                     {
                         "type": "image_url",
                         "image_url": {  # 改為對象格式
@@ -157,5 +157,4 @@ class IntelligentChatAssistant:
         chat_history.add_user_message(user_input)
         chat_history.add_ai_message(final_response)
 
-        print(f"\n==================\n會話ID: {session_id}")
         return final_response

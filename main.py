@@ -43,25 +43,11 @@ def callback():
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     source_type = event.source.type
-
-    # 處理不同類型的訊息來源
-    if source_type == "user":
-        with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            # 將整個event傳遞給AI助手，以便提取用戶ID
-            response_text = ai.send_query(event, event.message.text)
-            line_bot_api.reply_message_with_http_info(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=response_text)],
-                )
-            )
-    elif source_type == "group":
-        mention = getattr(event.message, "mention", None)
-        if mention and any(getattr(m, "is_self", False) for m in mention.mentionees):
+    match source_type:
+        case "user":
             with ApiClient(configuration) as api_client:
                 line_bot_api = MessagingApi(api_client)
-                # 將整個event傳遞給AI助手，以便提取群組ID和用戶ID
+                # 將整個event傳遞給AI助手，以便提取用戶ID
                 response_text = ai.send_query(event, event.message.text)
                 line_bot_api.reply_message_with_http_info(
                     ReplyMessageRequest(
@@ -69,6 +55,19 @@ def handle_message(event):
                         messages=[TextMessage(text=response_text)],
                     )
                 )
+        case "group":
+            mention = getattr(event.message, "mention", None)
+            if mention and any(getattr(m, "is_self", False) for m in mention.mentionees):
+                with ApiClient(configuration) as api_client:
+                    line_bot_api = MessagingApi(api_client)
+                    # 將整個event傳遞給AI助手，以便提取群組ID和用戶ID
+                    response_text = ai.send_query(event, event.message.text)
+                    line_bot_api.reply_message_with_http_info(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text=response_text)],
+                        )
+                    )
 
 
 @handler.add(MessageEvent, message=ImageMessageContent)
