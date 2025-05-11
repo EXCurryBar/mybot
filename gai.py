@@ -16,7 +16,7 @@ secret = json.loads(open("secret.json", "r").read())
 class IntelligentChatAssistant:
     def __init__(self, search_depth=5):
         self.client = OpenAI(
-            api_key=json.loads(open("secret.json", "r").read())["openai"]
+            api_key=secret["openai"]
         )
         self.prompt = ChatPromptTemplate.from_messages(
             [
@@ -26,7 +26,7 @@ class IntelligentChatAssistant:
             ]
         )
         self.llm = ChatOpenAI(
-            model=MODEL, api_key=json.loads(open("secret.json", "r").read())["openai"]
+            model=MODEL, api_key=secret["openai"]
         )
         self.search_depth = search_depth
         self.search_cache = {}
