@@ -96,24 +96,18 @@ class IntelligentChatAssistant:
             messages.append({
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": """你必須遵守以下規則：
-                                            1. 無論影像內容是否可辨識，必須提供至少50字回應
-                                            2. 若無法辨識主要物件，需描述色彩、構圖等基本特徵
-                                            3. 完全無法分析時，建議使用者調整拍攝角度或提供文字說明"""},
                     {
-                        "type": "image_url",
-                        "image_url": {  # 改為對象格式
-                            "url": f"data:image/jpeg;base64,{image_data}",
-                            "detail": "high"  # 可選參數，控制圖片解析度
-                        }
+                        "type": "input_image",
+                        "image_url": f"data:image/jpeg;base64,{image_data}",
+                        "detail": "high"  # 可選參數，控制圖片解析度
                     }
                 ]
             })
-            response = self.client.chat.completions.create(
+            response = self.client.responses.create(
                 model=MODEL,
-                messages=messages,
-                max_completion_tokens=1000
-            ).choices[0].message.content
+                input=messages,
+                tools=[{"type": "web_search"}]
+            ).output_text
             # 儲存圖片分析對話
             chat_history.add_user_message("[圖片]")
             chat_history.add_ai_message(response)
@@ -122,42 +116,19 @@ class IntelligentChatAssistant:
         
         
         # 文字訊息
-        initial_response = self.client.responses.create(
+        response = self.client.responses.create(
             model=MODEL,
             input=[
                 {"role": "system", "content": PROMPT},
                 *history_messages,
                 {"role": "user", "content": user_input},
             ],
+            tools=[{"type": "web_search"}]
         ).output_text
-
-        # 判斷是否需要網路搜尋
-        fail_message = json.loads(open("fail.json", "r").read())
-        if any(item in initial_response for item in fail_message):
-            search_query = (
-                user_input if len(user_input) < 100 else user_input[:100] + "..."
-            )
-            search_result = self._web_search(search_query)
-
-            if search_result:
-                final_response = self.client.responses.create(
-                    model=MODEL,
-                    input=[
-                        {"role": "system", "content": "請整合以下資訊回答問題"},
-                        {
-                            "role": "user",
-                            "content": f"問題：{user_input}\n補充資料：{search_result}",
-                        },
-                    ],
-                ).output_text
-            else:
-                final_response = "無法取得相關網路資訊，請嘗試其他問題"
-        else:
-            final_response = initial_response
 
         
         # 更新對話歷史到MongoDB
         chat_history.add_user_message(user_input)
-        chat_history.add_ai_message(final_response)
+        chat_history.add_ai_message(response)
 
-        return final_response
+        return response
