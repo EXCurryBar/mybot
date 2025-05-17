@@ -10,6 +10,8 @@ class GenPieChart:
         user_id = records[0]["user_id"] if records else None
         category_sums = dict()
         for record in records:
+            if record["type"] == "收入":
+                continue
             category = record["category"]
             amount = record["amount"]
             category_sums[category] = category_sums.get(category, 0) + amount
@@ -21,7 +23,7 @@ class GenPieChart:
         plt.pie(
             sizes,
             labels=labels,
-            autopct="%1.1f%%",
+            autopct=lambda pct: f'{pct:.1f}%\n({int(pct/100.*sum(sizes))}元)',
             startangle=140,
             textprops={"fontsize": 16}
         )

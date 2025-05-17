@@ -120,9 +120,8 @@ def handle_message(event):
                     GenPieChart.generate_pie_chart(spending_data)
                     trailing = f"images/{user_id}.png"
                     image_url = f"https://{config['url']}/{trailing}"
-                    print(image_url)
                     while not os.path.exists(trailing):
-                        time.sleep(1)
+                        time.sleep(0.5)
                     try:
                         # 發送圖片訊息
                         with ApiClient(configuration) as api_client:
@@ -144,7 +143,7 @@ def handle_message(event):
                                 
                                 # 刪除檔案
                                 if os.path.exists(trailing):
-                                    os.remove(trailing)
+                                    os.unlink(trailing)
                                     logging.info(f"已刪除圖片檔案: {trailing}")
                                 else:
                                     logging.warning(f"找不到圖片檔案: {trailing}")
