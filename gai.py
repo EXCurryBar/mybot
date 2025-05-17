@@ -2,11 +2,9 @@ from openai import OpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
 from googlesearch import search
-from bs4 import BeautifulSoup
-import requests
-import re
 import json
 from mongo_history import MongoHistoryManager
+import logging
 
 
 MODEL = json.loads(open("config.json", "r").read())["model"]
@@ -14,7 +12,7 @@ PROMPT = open("prompt.txt", "r").read()
 secret = json.loads(open("secret.json", "r").read())
 
 class IntelligentChatAssistant:
-    def __init__(self, search_depth=5):
+    def __init__(self):
         self.client = OpenAI(
             api_key=secret["openai"]
         )
@@ -28,9 +26,8 @@ class IntelligentChatAssistant:
         self.llm = ChatOpenAI(
             model=MODEL, api_key=secret["openai"]
         )
-        self.search_depth = search_depth
-        self.search_cache = {}
         self.history_manager = MongoHistoryManager()
+        logging.info("gai: class initialized")
 
     def _get_session_id(self, source_type, user_id, group_id=None, room_id=None):
         """根據來源類型生成會話ID"""
@@ -41,37 +38,6 @@ class IntelligentChatAssistant:
         elif source_type == "room" and room_id:
             return f"room_{room_id}_user_{user_id}"
         return f"default_{user_id}"  # 預設情況
-
-    def _web_search(self, query):
-        # 保持原有搜尋邏輯
-        try:
-            search_results = list(search(query, num_results=self.search_depth))
-            summaries = []
-
-            for url in search_results:
-                if url in self.search_cache:
-                    summaries.append(self.search_cache[url])
-                    continue
-
-                response = requests.get(url, timeout=10)
-                soup = BeautifulSoup(response.text, "html.parser")
-                text = soup.get_text()
-                clean_text = re.sub(r"\s+", " ", text)[:5000]
-
-                summary = self.client.responses.create(
-                    model=MODEL,
-                    instructions="請用繁體中文總結以下內容，限制在300字內",
-                    input=clean_text,
-                ).output_text
-
-                self.search_cache[url] = summary
-                summaries.append(summary)
-
-            return "\n\n".join(summaries)
-
-        except Exception as e:
-            print(f"搜尋錯誤: {str(e)}")
-            return None
 
     def send_query(self, event, user_input, image_data=None):
         """處理用戶查詢，整合MongoDB歷史記錄"""
@@ -90,7 +56,6 @@ class IntelligentChatAssistant:
         
         # 圖
         if image_data:
-            # o4-mini多模態推理
             messages = [{"role": "system", "content": PROMPT}]
             messages += history_messages
             messages.append({
