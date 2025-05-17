@@ -35,35 +35,38 @@ class Accounting:
                 parsed_data['user_id'] = user_id
                 return parsed_data
             except json.JSONDecodeError as e:
-                logging.error(f"mamay: 解析OpenAI回應失敗: {e}")
+                logging.error(f"manay: 解析OpenAI回應失敗: {e}")
                 return {}
                 
         except Exception as e:
-            logging.error(f"mamay: OpenAI API呼叫失敗: {e}")
+            logging.error(f"manay: OpenAI API呼叫失敗: {e}")
             return {}
     
     def save_db(self, record=None):
         """將記帳記錄儲存到MongoDB"""
         if record is None:
-            logging.error("mamay: 沒有提供記帳資料，無法儲存")
+            logging.error("manay: 沒有提供記帳資料，無法儲存")
             return False
             
         # 補充時間戳記
         now = datetime.now()
+        if record["month"] is None:
+            record["month"] = now.month
+        if record["year"] is None:
+            record["year"] = now.year
+        if record["day"] is None:
+            record["day"] = now.day
         record.update({
             'created_at': now,
-            'updated_at': now,
-            'year': now.year,
-            'month': now.month,
-            'day': now.day
+            'updated_at': now
         })
         
         try:
             result = self.db.records.insert_one(record)
-            logging.info(f"mamay: 記帳記錄已儲存，ID: {result.inserted_id}")
+            logging.info(f"manay: 記帳記錄已儲存，ID: {result.inserted_id}")
             return True
         except Exception as e:
-            logging.error(f"mamay: 資料庫儲存失敗: {e}")
+            logging.error(f"manay: 資料庫儲存失敗: {e}")
             return False
             
     def get_records(self, user_id, year=None, month=None):
@@ -79,7 +82,7 @@ class Accounting:
             records = list(self.db.records.find(query))
             return records
         except Exception as e:
-            logging.error(f"mamay: 查詢記錄失敗: {e}")
+            logging.error(f"manay: 查詢記錄失敗: {e}")
             return []
             
     def get_monthly_summary(self, user_id, year, month):
@@ -105,5 +108,5 @@ class Accounting:
             summary['balance'] = summary['income'] - summary['expense']
             return summary
         except Exception as e:
-            logging.error(f"mamay: 計算月度統計失敗: {e}")
+            logging.error(f"manay: 計算月度統計失敗: {e}")
             return {'income': 0, 'expense': 0, 'balance': 0}

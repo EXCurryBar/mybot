@@ -1,6 +1,6 @@
 import json
 import logging
-from flask import Flask, request, abort
+from flask import Flask, request, abort, send_from_directory
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
@@ -9,12 +9,16 @@ from linebot.v3.messaging import (
     MessagingApi,
     ReplyMessageRequest,
     TextMessage,
+    ImageMessage
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, ImageMessageContent
 from gai import IntelligentChatAssistant
 from image_processor import ImageProcessor
 from datetime import datetime
 from manay import Accounting
+from generate_graph import GenPieChart
+import os
+import time
 
 log_filename = datetime.now().strftime("%Y%m%d_%H%M%S") + ".log"
 
@@ -31,7 +35,6 @@ logging.basicConfig(
 
 app = Flask(__name__)
 config = json.loads(open("config.json", "r").read())
-
 secret = json.loads(open("secret.json", "r").read())
 # 請填入你在 LINE Developers 取得的 Channel Access Token 與 Channel Secret
 configuration = Configuration(access_token=secret["access_token"])
@@ -73,24 +76,84 @@ def handle_message(event):
             
             # 使用OpenAI解析記帳訊息
             parsed_result = ac.parse_message(command)
+            try:
             
-            if parsed_result and 'amount' in parsed_result and 'item' in parsed_result:
-                # 成功解析為記帳資訊
-                if ac.save_db(parsed_result):
-                    # 建立回覆訊息
-                    if parsed_result.get('type') == '收入':
-                        response_text = f"✅ 已記錄收入：{parsed_result['item']} {parsed_result['amount']}元"
-                    else:  # 支出
-                        response_text = f"✅ 已記錄支出：{parsed_result['item']} {parsed_result['amount']}元"
+                if parsed_result and 'amount' in parsed_result and 'item' in parsed_result:
+                    # 成功解析為記帳資訊
+                    if ac.save_db(parsed_result):
+                        # 建立回覆訊息
+                        now = datetime.now()
+                        y = now.year
+                        m = now.month
+                        d = now.day
+                        if parsed_result["year"] is None and parsed_result["month"] is None and parsed_result["day"] is None:
+                            y = now.year
+                            m = now.month
+                            d = now.day
+                        else:
+                            y = parsed_result["year"]
+                            m = parsed_result["month"]
+                            d = parsed_result["day"]
+                            
+                        if parsed_result.get('type') == '收入':
+                            response_text = f"✅ 已記錄收入：\n在{y}年{m}月{d}日 {parsed_result['item']} 賺了 {parsed_result['amount']}元"
+                        else:  # 支出
+                            response_text = f"✅ 已記錄支出：\n在{y}年{m}月{d}日 {parsed_result['item']} 花了 {parsed_result['amount']}元"
+                        
+                        # 取得當月統計
+                        now = datetime.now()
+                        summary = ac.get_monthly_summary(user_id, now.year, now.month)
+                        response_text += f"\n\n本月收入：{summary['income']}元\n本月支出：{summary['expense']}元\n本月結餘：{summary['balance']}元"
+                    else:
+                        response_text = "❌ 記帳失敗，請稍後再試"
+                
+                elif parsed_result["type"] == "分析":
+                    logging.debug("main: 收到分析請求")
+                    spending_data = list()
+                    if "month" in parsed_result and "year" in parsed_result:
+                        spending_data = ac.get_records(user_id, parsed_result["year"], parsed_result["month"])
+                        
+                    elif "month" in parsed_result:
+                        spending_data = ac.get_records(user_id, datetime.now().year, parsed_result["month"])
+                    else:
+                        spending_data = ac.get_records(user_id, datetime.now().year, datetime.now().month)
+                    GenPieChart.generate_pie_chart(spending_data)
+                    trailing = f"images/{user_id}.png"
+                    image_url = f"https://{config['url']}/{trailing}"
+                    print(image_url)
+                    while not os.path.exists(trailing):
+                        time.sleep(1)
+                    try:
+                        # 發送圖片訊息
+                        with ApiClient(configuration) as api_client:
+                            line_bot_api = MessagingApi(api_client)
+                            response = line_bot_api.reply_message_with_http_info(
+                                ReplyMessageRequest(
+                                    reply_token=event.reply_token,
+                                    messages=[
+                                        ImageMessage(
+                                            original_content_url=image_url,
+                                            preview_image_url=image_url
+                                        )
+                                    ]
+                                )
+                            )
+                            # 確認訊息發送成功後刪除檔案
+                            if response[1] == 200:  # HTTP 200代表成功
+                                time.sleep(1)  # 等待2秒
+                                
+                                # 刪除檔案
+                                if os.path.exists(trailing):
+                                    os.remove(trailing)
+                                    logging.info(f"已刪除圖片檔案: {trailing}")
+                                else:
+                                    logging.warning(f"找不到圖片檔案: {trailing}")
+                    except Exception as e:
+                        logging.error(f"發送或刪除圖片時發生錯誤: {e}")
                     
-                    # 取得當月統計
-                    now = datetime.now()
-                    summary = ac.get_monthly_summary(user_id, now.year, now.month)
-                    response_text += f"\n\n本月收入：{summary['income']}元\n本月支出：{summary['expense']}元\n本月結餘：{summary['balance']}元"
-                else:
-                    response_text = "❌ 記帳失敗，請稍後再試"
-            else:
-                # 如果不是記帳指令，使用AI助手回覆
+                    return
+            except KeyError:
+                # 不是記帳指令，使用AI助手回覆
                 response_text = ai.send_query(event, message_text)
             
             # 回覆用戶
@@ -168,6 +231,12 @@ def handle_image(event):
                 )
             )
 
+@app.route("/images/<path:image_id>")
+def send_image(image_id):
+    try:
+        return send_from_directory("images", image_id)
+    except FileNotFoundError:
+        return "Image not found", 404
 
 if __name__ == "__main__":
     ai = IntelligentChatAssistant()
