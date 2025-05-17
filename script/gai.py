@@ -7,9 +7,9 @@ from .mongo_history import MongoHistoryManager
 import logging
 
 
-MODEL = json.loads(open("config.json", "r").read())["model"]
+MODEL = json.loads(open("config/config.json", "r").read())["model"]
 PROMPT = open("prompt/prompt.txt", "r").read()
-secret = json.loads(open("secret.json", "r").read())
+secret = json.loads(open("config/secret.json", "r").read())
 
 class IntelligentChatAssistant:
     def __init__(self):

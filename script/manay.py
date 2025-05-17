@@ -5,7 +5,7 @@ from datetime import datetime
 import json
 
 
-secret = json.loads(open("secret.json", "r").read())
+secret = json.loads(open("config/secret.json", "r").read())
 
 class Accounting:
     def __init__(self):

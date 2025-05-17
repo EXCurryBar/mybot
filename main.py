@@ -34,8 +34,8 @@ logging.basicConfig(
 )
 
 app = Flask(__name__)
-config = json.loads(open("config.json", "r").read())
-secret = json.loads(open("secret.json", "r").read())
+config = json.loads(open("config/config.json", "r").read())
+secret = json.loads(open("config/secret.json", "r").read())
 configuration = Configuration(access_token=secret["access_token"])
 handler = WebhookHandler(secret["channel_secret"])
 image_processor = ImageProcessor(configuration)

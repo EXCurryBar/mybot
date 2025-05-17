@@ -1,8 +1,6 @@
 nohup.out
-secret.json
+config
 .venv
 __pycache__/
-fail.json
-config.json
 log
 images
