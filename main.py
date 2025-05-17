@@ -12,11 +12,11 @@ from linebot.v3.messaging import (
     ImageMessage
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, ImageMessageContent
-from gai import IntelligentChatAssistant
-from image_processor import ImageProcessor
+from script.gai import IntelligentChatAssistant
+from script.image_processor import ImageProcessor
 from datetime import datetime
-from manay import Accounting
-from generate_graph import GenPieChart
+from script.manay import Accounting
+from script.generate_graph import GenPieChart
 import os
 import time
 
@@ -36,7 +36,6 @@ logging.basicConfig(
 app = Flask(__name__)
 config = json.loads(open("config.json", "r").read())
 secret = json.loads(open("secret.json", "r").read())
-# 請填入你在 LINE Developers 取得的 Channel Access Token 與 Channel Secret
 configuration = Configuration(access_token=secret["access_token"])
 handler = WebhookHandler(secret["channel_secret"])
 image_processor = ImageProcessor(configuration)
@@ -77,7 +76,6 @@ def handle_message(event):
             # 使用OpenAI解析記帳訊息
             parsed_result = ac.parse_message(command)
             try:
-            
                 if parsed_result and 'amount' in parsed_result and 'item' in parsed_result:
                     # 成功解析為記帳資訊
                     if ac.save_db(parsed_result):
@@ -196,37 +194,48 @@ def handle_image(event):
         line_bot_api = MessagingApi(api_client)
         
         # 使用AI分析收據圖片並轉換為記帳資訊
-        response = ai.send_query(event, "", image_data=image_data)
+        response = ac.parse_image(image_data)
         
-        # 嘗試從AI回應中提取記帳資訊
         user_id = event.source.user_id
         try:
-            # 假設AI已經將收據解析為結構化資料
-            # 這裡可以進一步處理AI返回的資訊，提取記帳相關數據
-            parsed_result = {
-                'user_id': user_id,
-                'type': '支出',  # 收據通常是支出
-                'amount': 0,  # 需要從AI回應中提取
-                'item': '從收據識別',  # 需要從AI回應中提取
-                'created_at': datetime.now()
-            }
+            response.update({"user_id": user_id})
+            if response["type"] == "收入" or response["type"] == "支出":
+                raise KeyError("Invalid type")
             
-            # 將收據資訊存入資料庫
-            # ac.save_db(parsed_result)  # 這裡暫時註釋掉，因為需要進一步開發收據解析功能
-            
-            # 回覆用戶
+            if ac.save_db(response):
+                now = datetime.now()
+                y = now.year
+                m = now.month
+                d = now.day
+                if response["year"] is None and response["month"] is None and response["day"] is None:
+                    y = now.year
+                    m = now.month
+                    d = now.day
+                else:
+                    y = response["year"]
+                    m = response["month"]
+                    d = response["day"]
+                    
+                if response.get('type') == '收入':
+                    response = f"✅ 已記錄收入：\n在{y}年{m}月{d}日 {response['item']} 賺了 {response['amount']}元"
+                else:  # 支出
+                    response = f"✅ 已記錄支出：\n在{y}年{m}月{d}日 {response['item']} 花了 {response['amount']}元"
+                    
+                    
             line_bot_api.reply_message_with_http_info(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[TextMessage(text=response)]
                 )
             )
-        except Exception as e:
-            logging.error(f"main: 處理收據圖片時發生錯誤: {e}")
+            return
+        except KeyError:
+            logging.info(f"main: 正常聊")
+            response = ai.send_query(event, "", image_data=image_data)
             line_bot_api.reply_message_with_http_info(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text="無法識別收據，請重新拍攝或手動輸入")]
+                    messages=[TextMessage(text=response)]
                 )
             )
 

@@ -3,12 +3,12 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
 from googlesearch import search
 import json
-from mongo_history import MongoHistoryManager
+from .mongo_history import MongoHistoryManager
 import logging
 
 
 MODEL = json.loads(open("config.json", "r").read())["model"]
-PROMPT = open("prompt.txt", "r").read()
+PROMPT = open("prompt/prompt.txt", "r").read()
 secret = json.loads(open("secret.json", "r").read())
 
 class IntelligentChatAssistant:

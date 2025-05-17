@@ -22,17 +22,49 @@ class Accounting:
         user_id = command.get('user_id', '')
         
         # 使用OpenAI API解析訊息
-        prompt = open("accounting_prompt.txt", "r").read()
+        prompt = open("prompt/accounting_prompt.txt", "r").read()
         prompt = prompt.replace("{message}", message)
         try:
             response = self.client.responses.create(
-                model="gpt-4.1-mini",
+                model="o4-mini",
                 input=[{"role": "user", "content": prompt}]
             ).output_text
             
             try:
                 parsed_data = json.loads(response)
                 parsed_data['user_id'] = user_id
+                return parsed_data
+            except json.JSONDecodeError as e:
+                logging.error(f"manay: 解析OpenAI回應失敗: {e}")
+                return {}
+                
+        except Exception as e:
+            logging.error(f"manay: OpenAI API呼叫失敗: {e}")
+            return {}
+    
+    def parse_image(self, image_data):
+        """解析圖片，使用OpenAI識別收入/支出、金額和品名"""
+        # 使用OpenAI API解析圖片
+        prompt = open("prompt/accounting_prompt.txt", "r").read()
+        messages = [{"role": "user", "content": prompt}]
+        messages.append({
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_image",
+                    "image_url": f"data:image/jpeg;base64,{image_data}",
+                    "detail": "high"  # 可選參數，控制圖片解析度
+                }
+            ]
+        })
+        try:
+            response = self.client.responses.create(
+                model="gpt-4.1",
+                input=messages
+            ).output_text
+            
+            try:
+                parsed_data = json.loads(response)
                 return parsed_data
             except json.JSONDecodeError as e:
                 logging.error(f"manay: 解析OpenAI回應失敗: {e}")
