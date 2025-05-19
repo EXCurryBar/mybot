@@ -9,16 +9,12 @@ from linebot.v3.messaging import (
     MessagingApi,
     ReplyMessageRequest,
     TextMessage,
-    ImageMessage
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, ImageMessageContent
 from script.gai import IntelligentChatAssistant
-from script.image_processor import ImageProcessor
 from datetime import datetime
 from script.manay import Accounting
-from script.generate_graph import GenPieChart
-import os
-import time
+
 
 log_filename = datetime.now().strftime("%Y%m%d_%H%M%S") + ".log"
 
@@ -38,7 +34,6 @@ config = json.loads(open("config/config.json", "r").read())
 secret = json.loads(open("config/secret.json", "r").read())
 configuration = Configuration(access_token=secret["access_token"])
 handler = WebhookHandler(secret["channel_secret"])
-image_processor = ImageProcessor(configuration)
 
 
 @app.route("/callback", methods=["POST"])
@@ -63,112 +58,30 @@ def handle_message(event):
     source_type = event.source.type
     match source_type:
         case "user":
-            # 當來源是單一用戶時，處理記帳功能
-            user_id = event.source.user_id
-            message_text = event.message.text
-            
-            # 建立指令格式提供給記帳系統
-            command = {
-                'user_id': user_id,
-                'message': message_text
-            }
-            
-            # 使用OpenAI解析記帳訊息
-            parsed_result = ac.parse_message(command)
-            try:
-                if parsed_result and 'amount' in parsed_result and 'item' in parsed_result:
-                    # 成功解析為記帳資訊
-                    if ac.save_db(parsed_result):
-                        # 建立回覆訊息
-                        now = datetime.now()
-                        y = now.year
-                        m = now.month
-                        d = now.day
-                        if parsed_result["year"] is None and parsed_result["month"] is None and parsed_result["day"] is None:
-                            y = now.year
-                            m = now.month
-                            d = now.day
-                        else:
-                            y = parsed_result["year"]
-                            m = parsed_result["month"]
-                            d = parsed_result["day"]
-                            
-                        if parsed_result.get('type') == '收入':
-                            response_text = f"✅ 已記錄收入：\n在{y}年{m}月{d}日 {parsed_result['item']} 賺了 {parsed_result['amount']}元"
-                        else:  # 支出
-                            response_text = f"✅ 已記錄支出：\n在{y}年{m}月{d}日 {parsed_result['item']} 花了 {parsed_result['amount']}元"
-                        
-                        # 取得當月統計
-                        now = datetime.now()
-                        summary = ac.get_monthly_summary(user_id, now.year, now.month)
-                        response_text += f"\n\n本月收入：{summary['income']}元\n本月支出：{summary['expense']}元\n本月結餘：{summary['balance']}元"
-                    else:
-                        response_text = "❌ 記帳失敗，請稍後再試"
-                
-                elif parsed_result["type"] == "分析":
-                    logging.debug("main: 收到分析請求")
-                    spending_data = list()
-                    if "month" in parsed_result and "year" in parsed_result:
-                        spending_data = ac.get_records(user_id, parsed_result["year"], parsed_result["month"])
-                        
-                    elif "month" in parsed_result:
-                        spending_data = ac.get_records(user_id, datetime.now().year, parsed_result["month"])
-                    else:
-                        spending_data = ac.get_records(user_id, datetime.now().year, datetime.now().month)
-                    GenPieChart.generate_pie_chart(spending_data)
-                    trailing = f"images/{user_id}.png"
-                    image_url = f"https://{config['url']}/{trailing}"
-                    while not os.path.exists(trailing):
-                        time.sleep(0.5)
-                    try:
-                        # 發送圖片訊息
-                        with ApiClient(configuration) as api_client:
-                            line_bot_api = MessagingApi(api_client)
-                            response = line_bot_api.reply_message_with_http_info(
-                                ReplyMessageRequest(
-                                    reply_token=event.reply_token,
-                                    messages=[
-                                        ImageMessage(
-                                            original_content_url=image_url,
-                                            preview_image_url=image_url
-                                        )
-                                    ]
-                                )
-                            )
-                            # 確認訊息發送成功後刪除檔案
-                            if response[1] == 200:  # HTTP 200代表成功
-                                time.sleep(1)  # 等待2秒
-                                
-                                # 刪除檔案
-                                if os.path.exists(trailing):
-                                    os.unlink(trailing)
-                                    logging.info(f"已刪除圖片檔案: {trailing}")
-                                else:
-                                    logging.warning(f"找不到圖片檔案: {trailing}")
-                    except Exception as e:
-                        logging.error(f"發送或刪除圖片時發生錯誤: {e}")
-                    
-                    return
-            except KeyError:
-                # 不是記帳指令，使用AI助手回覆
-                response_text = ai.send_query(event, message_text)
-            
-            # 回覆用戶
-            with ApiClient(configuration) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.reply_message_with_http_info(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=response_text)],
-                    )
-                )
-        
-        case "group":
-            mention = getattr(event.message, "mention", None)
-            if mention and any(getattr(m, "is_self", False) for m in mention.mentionees):
+            reply_message_request = ac.parse_message(event)
+            if type(reply_message_request) == ReplyMessageRequest:
                 with ApiClient(configuration) as api_client:
                     line_bot_api = MessagingApi(api_client)
-                    # 將整個event傳遞給AI助手，以便提取群組ID和用戶ID
+                    line_bot_api.reply_message_with_http_info(reply_message_request)
+            else:
+                response_text = ai.send_query(event, event.message.text)
+                with ApiClient(configuration) as api_client:
+                    line_bot_api = MessagingApi(api_client)
+                    line_bot_api.reply_message_with_http_info(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[TextMessage(text=response_text)],
+                        )
+                    )
+
+                
+        case "group":
+            mention = getattr(event.message, "mention", None)
+            if mention and any(
+                getattr(m, "is_self", False) for m in mention.mentionees
+            ):
+                with ApiClient(configuration) as api_client:
+                    line_bot_api = MessagingApi(api_client)
                     response_text = ai.send_query(event, event.message.text)
                     line_bot_api.reply_message_with_http_info(
                         ReplyMessageRequest(
@@ -182,62 +95,33 @@ def handle_message(event):
 def handle_image(event):
     if event.source.type != "user":
         return  # 僅處理個人對話
-    
-    # 使用修正後的圖片處理器
-    image_data = image_processor.download_image(event.message.id)
-    
-    if not image_data:
-        logging.warning("main: Failed to download image.")
-        return 
-    
+
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        
+
         # 使用AI分析收據圖片並轉換為記帳資訊
-        response = ac.parse_image(image_data)
-        
-        user_id = event.source.user_id
         try:
-            response.update({"user_id": user_id})
-            if response["type"] == "收入" or response["type"] == "支出":
-                raise KeyError("Invalid type")
-            
-            if ac.save_db(response):
-                now = datetime.now()
-                y = now.year
-                m = now.month
-                d = now.day
-                if response["year"] is None and response["month"] is None and response["day"] is None:
-                    y = now.year
-                    m = now.month
-                    d = now.day
-                else:
-                    y = response["year"]
-                    m = response["month"]
-                    d = response["day"]
-                    
-                if response.get('type') == '收入':
-                    response = f"✅ 已記錄收入：\n在{y}年{m}月{d}日 {response['item']} 賺了 {response['amount']}元"
-                else:  # 支出
-                    response = f"✅ 已記錄支出：\n在{y}年{m}月{d}日 {response['item']} 花了 {response['amount']}元"
-                    
-                    
+            reply_message_request = ac.parse_image(event)
+            if type(reply_message_request) == ReplyMessageRequest:
+                line_bot_api.reply_message_with_http_info(reply_message_request)
+            else:
+                image_data = reply_message_request.get("image")
+                response_text = ai.send_query(event, "",  image_data=image_data)
+                line_bot_api.reply_message_with_http_info(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=response_text)],
+                    )
+                )
+        except Exception as e:
+            logging.error(f"Error processing image: {e}")
             line_bot_api.reply_message_with_http_info(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text=response)]
+                    messages=[TextMessage(text="無法處理圖片，請稍後再試。")],
                 )
             )
-            return
-        except KeyError:
-            logging.info(f"main: 正常聊")
-            response = ai.send_query(event, "", image_data=image_data)
-            line_bot_api.reply_message_with_http_info(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text=response)]
-                )
-            )
+
 
 @app.route("/images/<path:image_id>")
 def send_image(image_id):
@@ -245,6 +129,7 @@ def send_image(image_id):
         return send_from_directory("images", image_id)
     except FileNotFoundError:
         return "Image not found", 404
+
 
 if __name__ == "__main__":
     ai = IntelligentChatAssistant()

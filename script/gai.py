@@ -71,7 +71,7 @@ class IntelligentChatAssistant:
             response = self.client.responses.create(
                 model=MODEL,
                 input=messages,
-                tools=[{"type": "web_search"}]
+                tools=[{"type": "web_search_preview"}]
             ).output_text
             # 儲存圖片分析對話
             chat_history.add_user_message("[圖片]")
@@ -88,7 +88,7 @@ class IntelligentChatAssistant:
                 *history_messages,
                 {"role": "user", "content": user_input},
             ],
-            tools=[{"type": "web_search"}]
+            tools=[{"type": "web_search_preview"}]
         ).output_text
 
         
